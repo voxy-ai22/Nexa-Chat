@@ -1,27 +1,26 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-// getAISuggestion fetches business advice from NEXA AI.
 export const getAISuggestion = async (prompt: string) => {
   try {
-    // Guideline: Always use a named parameter and obtain API key directly from process.env.API_KEY.
-    // Guideline: Create a new instance right before the call to ensure the latest config.
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // Guideline: Use ai.models.generateContent with model name and prompt.
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
-        systemInstruction: "You are NEXA AI, an expert business consultant. Give concise, elite advice for Indonesian entrepreneurs in monochrome style. Be professional and bold.",
+        systemInstruction: "Anda adalah NEXA AI, konsultan bisnis elit. Berikan saran yang sangat singkat, tajam, dan profesional dalam bahasa Indonesia. Gaya komunikasi Anda adalah monokrom: lugas dan tidak bertele-tele.",
         temperature: 0.7,
       },
     });
 
-    // Guideline: Extract text from GenerateContentResponse using the .text property.
-    return response.text;
+    // Sesuai guideline: Gunakan properti .text, bukan method .text()
+    const textOutput = response.text;
+    if (!textOutput) throw new Error("Output AI kosong.");
+    
+    return textOutput;
   } catch (error) {
-    console.error("AI Error:", error);
-    return "NEXA AI encountered an error processing your request.";
+    console.error("NEXA_AI_CORE_FAILURE:", error);
+    return "GAGAL MENGHUBUNGKAN KE NEXA AI. SILAKAN COBA LAGI.";
   }
 };

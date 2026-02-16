@@ -16,8 +16,11 @@ import SaranView from './components/SaranView';
 import ProfileView from './components/ProfileView';
 import Login from './components/Login';
 import NotificationToast from './components/NotificationToast';
+import ErrorBoundary from './components/ErrorBoundary';
+import SplashScreen from './components/SplashScreen';
 
 const App: React.FC = () => {
+  const [isInitializing, setIsInitializing] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [activeView, setActiveView] = useState<View>(View.CHAT);
   
@@ -27,7 +30,6 @@ const App: React.FC = () => {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [onlineCount, setOnlineCount] = useState(1);
 
-  // Ref untuk menghindari stale state dalam interval
   const messagesRef = useRef(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
@@ -55,19 +57,34 @@ const App: React.FC = () => {
     return () => onlineChannel.removeEventListener('message', handleSync);
   }, []);
 
-  // Initial Load & Daily Reset
+  // Initial Boot Sequence
   useEffect(() => {
-    initAntiDebug();
-    const db = getDB();
-    setMessages(db.messages);
-    setTickets(db.tickets);
-    setSuggestions(db.suggestions);
+    const initialize = async () => {
+      try {
+        initAntiDebug();
+        const db = getDB();
+        setMessages(db.messages || []);
+        setTickets(db.tickets || []);
+        setSuggestions(db.suggestions || []);
+        
+        // Cek login session yang tersimpan
+        const savedUser = localStorage.getItem('nexa_active_session');
+        if (savedUser) {
+          setUser(JSON.parse(savedUser));
+        }
+      } catch (err) {
+        console.error("BOOT_FAILURE:", err);
+      } finally {
+        // Simulasi waktu loading jaringan agar splash screen terlihat
+        setTimeout(() => setIsInitializing(false), 2000);
+      }
+    };
 
-    // Perbaikan: Gunakan interval yang tidak bergantung pada dependensi state luar
+    initialize();
+
     const resetTimer = setInterval(() => {
       const db = getDB();
-      // Hanya update jika panjang data benar-benar berubah dari storage (misal reset 07:00)
-      if (db.messages.length === 0 && messagesRef.current.length > 0) {
+      if (db.messages && db.messages.length === 0 && messagesRef.current.length > 0) {
         setMessages([]);
         addNotification("PEMBERSIHAN DATA: RESET 07:00 SELESAI", "info");
       }
@@ -101,60 +118,70 @@ const App: React.FC = () => {
 
   // Persistence Sync
   useEffect(() => {
-    if (user && messages.length > 0) {
+    if (user) {
       saveToDB({ messages, tickets, suggestions });
     }
   }, [messages, tickets, suggestions, user]);
 
   const handleLogin = (authenticatedUser: User) => {
     setUser(authenticatedUser);
+    localStorage.setItem('nexa_active_session', JSON.stringify(authenticatedUser));
     addNotification(`PROTOKOL DIAKTIFKAN: ${authenticatedUser.name}`, "success");
   };
 
   const handleLogout = () => {
     setUser(null);
+    localStorage.removeItem('nexa_active_session');
     setNotifications([]);
   };
 
-  if (!user) return <Login onLogin={handleLogin} />;
+  if (isInitializing) return <SplashScreen />;
 
   return (
-    <div className="flex flex-col h-screen w-full bg-black text-white overflow-hidden relative">
-      <div className="fixed top-24 left-0 right-0 z-[100] pointer-events-none flex flex-col gap-2 items-center">
-        {notifications.map(n => (
-          <NotificationToast key={n.id} notification={n} onDismiss={dismissNotification} />
-        ))}
-      </div>
-
-      <header className="pt-12 pb-4 px-6 flex justify-between items-center glass-dark z-50 border-b border-white/5">
-        <div>
-          <h1 className="text-3xl font-black tracking-tighter">NEXA</h1>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className={`w-1.5 h-1.5 rounded-full bg-white animate-pulse`}></span>
-            <span className="text-[10px] font-bold text-gray-400 tracking-widest uppercase">
-              {onlineCount} NODE AKTIF
-            </span>
-          </div>
+    <ErrorBoundary>
+      <div className="flex flex-col h-screen w-full bg-black text-white overflow-hidden relative">
+        <div className="fixed top-24 left-0 right-0 z-[100] pointer-events-none flex flex-col gap-2 items-center">
+          {notifications.map(n => (
+            <NotificationToast key={n.id} notification={n} onDismiss={dismissNotification} />
+          ))}
         </div>
-        <button onClick={handleLogout} className="p-2 rounded-full glass hover:bg-white/10 transition-all">
-          <LogOut size={18} className="text-white" />
-        </button>
-      </header>
 
-      <main className="flex-1 overflow-y-auto pb-32">
-        {activeView === View.CHAT && <ChatView user={user} messages={messages} setMessages={setMessages} notify={addNotification} />}
-        {activeView === View.TICKET && <TicketView user={user} tickets={tickets} setTickets={setTickets} notify={addNotification} />}
-        {activeView === View.SARAN && <SaranView user={user} suggestions={suggestions} setSuggestions={setSuggestions} notify={addNotification} />}
-        {activeView === View.PROFILE && <ProfileView user={user} setUser={setUser} notify={addNotification} />}
-      </main>
+        {!user ? (
+          <Login onLogin={handleLogin} />
+        ) : (
+          <>
+            <header className="pt-12 pb-4 px-6 flex justify-between items-center glass-dark z-50 border-b border-white/5">
+              <div>
+                <h1 className="text-3xl font-black tracking-tighter">NEXA</h1>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`w-1.5 h-1.5 rounded-full bg-white animate-pulse`}></span>
+                  <span className="text-[10px] font-bold text-gray-400 tracking-widest uppercase">
+                    {onlineCount} NODE AKTIF
+                  </span>
+                </div>
+              </div>
+              <button onClick={handleLogout} className="p-2 rounded-full glass hover:bg-white/10 transition-all">
+                <LogOut size={18} className="text-white" />
+              </button>
+            </header>
 
-      <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-md h-16 glass rounded-full flex items-center justify-around px-4 z-50">
-        <NavItem active={activeView === View.CHAT} onClick={() => setActiveView(View.CHAT)} icon={<MessageCircle size={24} />} label="Obrolan" />
-        <NavItem active={activeView === View.TICKET} onClick={() => setActiveView(View.TICKET)} icon={<TicketIcon size={24} />} label="Bantuan" />
-        <NavItem active={activeView === View.SARAN} onClick={() => setActiveView(View.SARAN)} icon={<Lightbulb size={24} />} label="Saran" />
-        <NavItem active={activeView === View.PROFILE} onClick={() => setActiveView(View.PROFILE)} icon={<UserIcon size={24} />} label="Profil" />
-      </nav>
-    </div>
+            <main className="flex-1 overflow-y-auto pb-32">
+              {activeView === View.CHAT && <ChatView user={user} messages={messages} setMessages={setMessages} notify={addNotification} />}
+              {activeView === View.TICKET && <TicketView user={user} tickets={tickets} setTickets={setTickets} notify={addNotification} />}
+              {activeView === View.SARAN && <SaranView user={user} suggestions={suggestions} setSuggestions={setSuggestions} notify={addNotification} />}
+              {activeView === View.PROFILE && <ProfileView user={user} setUser={setUser} notify={addNotification} />}
+            </main>
+
+            <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-md h-16 glass rounded-full flex items-center justify-around px-4 z-50">
+              <NavItem active={activeView === View.CHAT} onClick={() => setActiveView(View.CHAT)} icon={<MessageCircle size={24} />} label="Obrolan" />
+              <NavItem active={activeView === View.TICKET} onClick={() => setActiveView(View.TICKET)} icon={<TicketIcon size={24} />} label="Bantuan" />
+              <NavItem active={activeView === View.SARAN} onClick={() => setActiveView(View.SARAN)} icon={<Lightbulb size={24} />} label="Saran" />
+              <NavItem active={activeView === View.PROFILE} onClick={() => setActiveView(View.PROFILE)} icon={<UserIcon size={24} />} label="Profil" />
+            </nav>
+          </>
+        )}
+      </div>
+    </ErrorBoundary>
   );
 };
 
