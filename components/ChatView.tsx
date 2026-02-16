@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Message } from '../types';
 import { Send, Shield, AlertTriangle, Clock } from 'lucide-react';
-import { onlineChannel } from '../utils/storage';
 
 interface ChatViewProps {
   user: User;
@@ -20,7 +19,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
   const [glowMessageId, setGlowMessageId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll tetap di bawah
+  // Auto-scroll
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -50,7 +49,6 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
   useEffect(() => {
     if (messages.length > 0) {
       const lastMsg = messages[messages.length - 1];
-      // Hanya aktifkan glow jika pesan diterima dalam 5 detik terakhir (realtime)
       if (Date.now() - lastMsg.timestamp < 3000) {
         setGlowMessageId(lastMsg.id);
         const timer = setTimeout(() => setGlowMessageId(null), 3000);
@@ -59,7 +57,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
     }
   }, [messages.length]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || isBanned || cooldown > 0) return;
 
@@ -82,23 +80,35 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
         role: user.role
       };
 
-      // Penting: Gunakan fungsional update untuk mencegah data hilang
+      // Optimistic Update
       setMessages(prev => [...prev, newMessage]);
-      onlineChannel.postMessage({ type: 'new_message', message: newMessage });
       
+      // Server Persistence
+      const response = await fetch('/api', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_message',
+          payload: { message: newMessage }
+        })
+      });
+
+      if (!response.ok) throw new Error("API_ERROR");
+
       setInputText('');
       setCooldown(3);
       setMessageCount(prev => prev + 1);
     } catch (err) {
-      notify("KESALAHAN TRANSMISI", "alert");
+      notify("KESALAHAN TRANSMISI CLOUD", "alert");
+      // Remove failed message from UI
+      setMessages(prev => prev.slice(0, -1));
     }
   };
 
   const formatTime = (ts: number) => {
     return new Date(ts).toLocaleTimeString('id-ID', { 
       hour: '2-digit', 
-      minute: '2-digit',
-      second: '2-digit'
+      minute: '2-digit'
     });
   };
 
@@ -116,7 +126,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
           return (
             <div key={msg.id} className={`flex items-end gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row animate-in slide-in-from-bottom-2 duration-300'}`}>
               {!isMe && (
-                <div className={`w-9 h-9 rounded-full overflow-hidden shrink-0 border border-white/10 shadow-lg ${isAdmin ? 'admin-bubble-anim' : ''}`}>
+                <div className={`w-9 h-9 rounded-full overflow-hidden shrink-0 border border-white/10 shadow-lg ${isAdmin ? 'border-white/50 animate-pulse' : ''}`}>
                   <img src={msg.userAvatar} alt="" className="w-full h-full object-cover" />
                 </div>
               )}
@@ -124,12 +134,12 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
               <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[80%]`}>
                 {!isMe && (
                   <div className="flex items-center gap-2 mb-1 ml-1">
-                    <span className={`text-[9px] font-black uppercase tracking-widest ${isAdmin ? 'admin-text-anim' : 'text-gray-500'}`}>
+                    <span className={`text-[9px] font-black uppercase tracking-widest ${isAdmin ? 'text-white' : 'text-gray-500'}`}>
                       {msg.userName}
                     </span>
                     {isAdmin && (
                       <span className="bg-white text-black text-[6px] font-black px-1 rounded-sm flex items-center h-3">
-                        PEMILIK
+                        CEO
                       </span>
                     )}
                   </div>
@@ -138,10 +148,10 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
                 <div 
                   className={`px-4 py-2.5 rounded-2xl text-[13px] font-medium leading-relaxed transition-all border ${
                     isMe 
-                      ? `bg-white text-black rounded-tr-none border-transparent ${isGlowing ? 'nexa-glow' : ''}` 
+                      ? `bg-white text-black rounded-tr-none border-transparent ${isGlowing ? 'ring-2 ring-white/50' : ''}` 
                       : isAdmin 
-                        ? 'bg-black border border-white/30 text-white rounded-tl-none admin-bubble-anim'
-                        : `bg-zinc-900 border-white/5 text-white rounded-tl-none ${isGlowing ? 'nexa-glow' : ''}`
+                        ? 'bg-zinc-800 border-white/30 text-white rounded-tl-none ring-1 ring-white/10'
+                        : `bg-zinc-900 border-white/5 text-white rounded-tl-none ${isGlowing ? 'ring-2 ring-white/20' : ''}`
                   }`}
                 >
                   {msg.text}

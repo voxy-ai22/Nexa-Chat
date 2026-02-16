@@ -1,18 +1,23 @@
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 import { ShieldAlert, RefreshCw } from 'lucide-react';
 
 interface Props {
-  children: ReactNode;
+  // children is optional to allow flexible usage in parent components
+  children?: ReactNode;
 }
 
 interface State {
   hasError: boolean;
 }
 
-// Standard ErrorBoundary implementation for NEXA Global System
-class ErrorBoundary extends Component<Props, State> {
-  // Explicitly initialize state and call super(props) to resolve TypeScript inheritance issues for 'this.props'
+/**
+ * Standard ErrorBoundary implementation for NEXA Global System.
+ * Captures JavaScript errors anywhere in their child component tree.
+ */
+// Extending React.Component with generic Props and State ensures that 'this.props' and 'this.state' are correctly recognized by the TypeScript compiler
+class ErrorBoundary extends React.Component<Props, State> {
+  // Fix: Explicitly defining constructor and using React.Component to resolve inheritance typing issues where 'this.props' was not recognized
   constructor(props: Props) {
     super(props);
     this.state = {
@@ -20,15 +25,18 @@ class ErrorBoundary extends Component<Props, State> {
     };
   }
 
+  // Static method to update state so the next render will show the fallback UI
   public static getDerivedStateFromError(_: Error): State {
     return { hasError: true };
   }
 
+  // Lifecycle method used to log error information
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("NEXA_CRITICAL_ERROR:", error, errorInfo);
   }
 
   public render() {
+    // If an error state is caught, render the system failure UI
     if (this.state.hasError) {
       return (
         <div className="h-screen w-full bg-black flex flex-col items-center justify-center p-8 text-center">
@@ -47,8 +55,8 @@ class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    // Children is correctly accessed from this.props which is inherited from Component<Props, State>
-    return this.props.children;
+    // Access children from this.props which is now properly inherited from React.Component<Props, State>
+    return this.props.children || null;
   }
 }
 

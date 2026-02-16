@@ -11,18 +11,18 @@ export default defineConfig({
       compress: {
         drop_console: true,
         drop_debugger: true
+      },
+      format: {
+        comments: false
       }
     },
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ['react', 'react-dom', 'lucide-react']
+          'react-vendor': ['react', 'react-dom'],
+          'ui-vendor': ['lucide-react']
         }
       }
     }
-  },
-  server: {
-    port: 3000,
-    strictPort: true
   }
 });

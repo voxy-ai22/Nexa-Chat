@@ -1,10 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { User } from '../types';
 import { ShieldCheck, Lock, Mail, Loader2, AlertCircle } from 'lucide-react';
-
-const ADMIN_EMAIL_ENC = "TmV4YV9jZW9fcHRfYnVsdWtidWtAQWRtaW4yMDI2Iw==";
-const ADMIN_PASS_ENC = "JCZANTUyN0A6I2Y2OjI7QGFkbWluX2NoYXQubXkuZGV2";
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -16,58 +13,35 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    setTimeout(() => {
-      const decodedAdminEmail = atob(ADMIN_EMAIL_ENC);
-      const decodedAdminPass = atob(ADMIN_PASS_ENC);
-      
-      // Simulate checking a database for existing users
-      const userRegistry = JSON.parse(localStorage.getItem('nexa_users') || '{}');
+    try {
+      // Secure Server-Side Auth Call
+      const response = await fetch('/api', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'auth',
+          payload: { email, password }
+        })
+      });
 
-      // Admin check
-      if (email === decodedAdminEmail && password === decodedAdminPass) {
-        onLogin({
-          id: 'admin',
-          name: 'CEO NEXA',
-          avatar: 'https://picsum.photos/seed/nexa-ceo/200',
-          role: 'admin',
-          email: email
-        });
-        setLoading(false);
-        return;
-      }
+      const data = await response.json();
 
-      // Gmail uniqueness check
-      if (userRegistry[email] && userRegistry[email].password !== password) {
-        setError('PELANGGARAN KEAMANAN: IDENTITAS SUDAH TERDAFTAR PADA NODE LAIN.');
-        setLoading(false);
-        return;
-      }
-
-      if (email.includes('@') && password.length >= 6) {
-        // Register/Login standard user
-        const newUser: User = {
-          id: userRegistry[email]?.id || 'user-' + Math.random().toString(36).substr(2, 5),
-          name: email.split('@')[0].toUpperCase(),
-          avatar: `https://picsum.photos/seed/${email}/200`,
-          role: 'user',
-          email: email
-        };
-
-        // Persist the user registry
-        userRegistry[email] = { id: newUser.id, password: password };
-        localStorage.setItem('nexa_users', JSON.stringify(userRegistry));
-
-        onLogin(newUser);
+      if (response.ok && data.user) {
+        onLogin(data.user);
       } else {
-        setError('KESALAHAN VALIDASI: EMAIL TIDAK VALID ATAU PANJANG TOKEN KURANG.');
+        setError(data.error || 'IDENTITAS DITOLAK: TOKEN TIDAK VALID.');
       }
+    } catch (err) {
+      console.error("AUTH_ERROR", err);
+      setError('KEGAGALAN TRANSMISI: JARINGAN TERGANGGU.');
+    } finally {
       setLoading(false);
-    }, 1500);
+    }
   };
 
   return (
