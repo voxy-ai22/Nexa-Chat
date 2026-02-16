@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Message } from '../types';
-import { Send, Shield, AlertTriangle, Clock } from 'lucide-react';
+import { Send, AlertTriangle, ShieldAlert } from 'lucide-react';
 
 interface ChatViewProps {
   user: User;
@@ -17,16 +17,17 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
   const [isBanned, setIsBanned] = useState(false);
   const [banTimeRemaining, setBanTimeRemaining] = useState(0);
   const [glowMessageId, setGlowMessageId] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll
+  // Auto-scroll logic
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
 
-  // Handle Cooldown
+  // Handle Cooldown Timer
   useEffect(() => {
     if (cooldown > 0) {
       const timer = setTimeout(() => setCooldown(prev => prev - 1), 1000);
@@ -34,7 +35,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
     }
   }, [cooldown]);
 
-  // Handle Ban
+  // Handle Ban Timer
   useEffect(() => {
     if (isBanned && banTimeRemaining > 0) {
       const timer = setTimeout(() => setBanTimeRemaining(prev => prev - 1), 1000);
@@ -45,7 +46,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
     }
   }, [isBanned, banTimeRemaining]);
 
-  // Deteksi pesan baru untuk efek glow
+  // Handle New Message Animation
   useEffect(() => {
     if (messages.length > 0) {
       const lastMsg = messages[messages.length - 1];
@@ -59,7 +60,8 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || isBanned || cooldown > 0) return;
+    const text = inputText.trim();
+    if (!text || isBanned || cooldown > 0 || isSending) return;
 
     if (messageCount >= 20) {
       setIsBanned(true);
@@ -68,22 +70,23 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
       return;
     }
 
-    try {
-      const msgId = Math.random().toString(36).substr(2, 9);
-      const newMessage: Message = {
-        id: msgId,
-        userId: user.id,
-        userName: user.name,
-        userAvatar: user.avatar,
-        text: inputText,
-        timestamp: Date.now(),
-        role: user.role
-      };
+    setIsSending(true);
+    const msgId = Math.random().toString(36).substr(2, 9);
+    const newMessage: Message = {
+      id: msgId,
+      userId: user.id,
+      userName: user.name,
+      userAvatar: user.avatar,
+      text: text,
+      timestamp: Date.now(),
+      role: user.role
+    };
 
-      // Optimistic Update
-      setMessages(prev => [...prev, newMessage]);
-      
-      // Server Persistence
+    // Optimistic Update
+    setMessages(prev => [...prev, newMessage]);
+    setInputText('');
+
+    try {
       const response = await fetch('/api', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -93,15 +96,23 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
         })
       });
 
-      if (!response.ok) throw new Error("API_ERROR");
+      const data = await response.json();
 
-      setInputText('');
-      setCooldown(3);
+      if (!response.ok) {
+        throw new Error(data.error || "API_ERROR");
+      }
+
+      setCooldown(2);
       setMessageCount(prev => prev + 1);
-    } catch (err) {
-      notify("KESALAHAN TRANSMISI CLOUD", "alert");
-      // Remove failed message from UI
-      setMessages(prev => prev.slice(0, -1));
+    } catch (err: any) {
+      console.error("NEXA_TRANSMISSION_ERROR:", err);
+      notify(`TRANSMISI GAGAL: ${err.message || 'DATABASE OFFLINE'}`, "alert");
+      // Remove the optimistic message if it failed
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+      // Restore the text so user can try again
+      setInputText(text);
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -190,22 +201,36 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              disabled={isBanned || cooldown > 0}
-              placeholder={isBanned ? "SISTEM TERKUNCI" : cooldown > 0 ? `SYNC... (${cooldown}d)` : "KETIK PESAN..."}
+              disabled={isBanned || cooldown > 0 || isSending}
+              placeholder={
+                isBanned 
+                  ? "SISTEM TERKUNCI" 
+                  : isSending 
+                    ? "MENGIRIM..." 
+                    : cooldown > 0 
+                      ? `SYNC... (${cooldown}d)` 
+                      : "KETIK PESAN..."
+              }
               className="w-full bg-transparent border-none outline-none text-white text-[13px] placeholder:text-gray-800 font-medium"
             />
           </div>
           
           <button 
             type="submit"
-            disabled={isBanned || cooldown > 0 || !inputText.trim()}
+            disabled={isBanned || cooldown > 0 || !inputText.trim() || isSending}
             className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-              inputText.trim() && !isBanned && cooldown === 0 
+              inputText.trim() && !isBanned && cooldown === 0 && !isSending
               ? 'bg-white text-black hover:scale-105 active:scale-95 shadow-lg' 
               : 'bg-white/5 text-gray-800'
             }`}
           >
-            {cooldown > 0 ? <span className="text-[10px] font-black">{cooldown}</span> : <Send size={20} />}
+            {isSending ? (
+              <ShieldAlert size={20} className="animate-pulse" />
+            ) : cooldown > 0 ? (
+              <span className="text-[10px] font-black">{cooldown}</span>
+            ) : (
+              <Send size={20} />
+            )}
           </button>
         </form>
       </div>
