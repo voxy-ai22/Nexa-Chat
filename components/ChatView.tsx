@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Message } from '../types';
 import { Send, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { saveToDB, broadcastMessage, getDB } from '../utils/storage';
 
 interface ChatViewProps {
   user: User;
@@ -63,6 +64,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
     const text = inputText.trim();
     if (!text || isBanned || cooldown > 0 || isSending) return;
 
+    // Spam Protection
     if (messageCount >= 20) {
       setIsBanned(true);
       setBanTimeRemaining(300);
@@ -82,35 +84,23 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
       role: user.role
     };
 
-    // Optimistic Update
-    setMessages(prev => [...prev, newMessage]);
-    setInputText('');
-
     try {
-      const response = await fetch('/api', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'send_message',
-          payload: { message: newMessage }
-        })
-      });
+      // SIMPAN SECARA LOKAL (TIDAK KE DATABASE API)
+      const db = getDB();
+      const updatedMessages = [...db.messages, newMessage];
+      saveToDB({ messages: updatedMessages });
+      
+      // BROADCAST KE TAB LAIN
+      broadcastMessage(newMessage);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "API_ERROR");
-      }
-
-      setCooldown(2);
+      // UPDATE STATE UI
+      setMessages(updatedMessages);
+      setInputText('');
+      setCooldown(1);
       setMessageCount(prev => prev + 1);
     } catch (err: any) {
-      console.error("NEXA_TRANSMISSION_ERROR:", err);
-      notify(`TRANSMISI GAGAL: ${err.message || 'DATABASE OFFLINE'}`, "alert");
-      // Remove the optimistic message if it failed
-      setMessages(prev => prev.filter(m => m.id !== msgId));
-      // Restore the text so user can try again
-      setInputText(text);
+      console.error("NEXA_LOCAL_STORAGE_ERROR:", err);
+      notify("GAGAL MENYIMPAN PESAN LOKAL", "alert");
     } finally {
       setIsSending(false);
     }
@@ -129,6 +119,12 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
         ref={scrollRef}
         className="flex-1 overflow-y-auto px-4 pt-4 pb-48 space-y-6 scroll-smooth"
       >
+        <div className="px-4 py-3 glass rounded-2xl mb-4 border-blue-500/20 text-center">
+          <p className="text-[8px] font-black uppercase tracking-[0.3em] text-blue-400">
+            Pesan direset otomatis setiap pukul 07:00 AM
+          </p>
+        </div>
+
         {messages.map((msg) => {
           const isMe = msg.userId === user.id;
           const isAdmin = msg.role === 'admin';
@@ -205,11 +201,9 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
               placeholder={
                 isBanned 
                   ? "SISTEM TERKUNCI" 
-                  : isSending 
-                    ? "MENGIRIM..." 
-                    : cooldown > 0 
-                      ? `SYNC... (${cooldown}d)` 
-                      : "KETIK PESAN..."
+                  : cooldown > 0 
+                    ? `SYNC... (${cooldown}d)` 
+                    : "KETIK PESAN..."
               }
               className="w-full bg-transparent border-none outline-none text-white text-[13px] placeholder:text-gray-800 font-medium"
             />
@@ -226,8 +220,6 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
           >
             {isSending ? (
               <ShieldAlert size={20} className="animate-pulse" />
-            ) : cooldown > 0 ? (
-              <span className="text-[10px] font-black">{cooldown}</span>
             ) : (
               <Send size={20} />
             )}

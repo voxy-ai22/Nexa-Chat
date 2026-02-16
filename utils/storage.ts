@@ -33,12 +33,12 @@ export const getDB = (): Database => {
   const db = getInitialDB();
   const now = new Date();
   
-  // Check for 07:00 AM reset
+  // LOGIKA RESET 07:00 AM
   const lastResetDate = new Date(db.lastReset);
   const resetPoint = new Date();
   resetPoint.setHours(7, 0, 0, 0);
 
-  // If we haven't reset today and it's past 7 AM, OR if last reset was yesterday
+  // Jika waktu sekarang sudah lewat jam 7 pagi DAN reset terakhir dilakukan sebelum jam 7 hari ini
   if (now >= resetPoint && (lastResetDate < resetPoint)) {
     db.messages = [];
     db.lastReset = new Date().toISOString();
@@ -48,5 +48,9 @@ export const getDB = (): Database => {
   return db;
 };
 
-// Simple BroadcastChannel for simulated real-time online count across tabs
-export const onlineChannel = new BroadcastChannel('nexa_online_nodes');
+// BroadcastChannel untuk sinkronisasi antar tab tanpa database
+export const chatChannel = new BroadcastChannel('nexa_chat_sync');
+
+export const broadcastMessage = (message: Message) => {
+  chatChannel.postMessage({ type: 'NEW_MESSAGE', payload: message });
+};

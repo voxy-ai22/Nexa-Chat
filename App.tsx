@@ -10,6 +10,7 @@ import {
   RefreshCcw
 } from 'lucide-react';
 import { View, User, Message, AppNotification } from './types';
+import { getDB, chatChannel } from './utils/storage';
 
 // Lazy loading components
 const ChatView = lazy(() => import('./components/ChatView'));
@@ -40,32 +41,24 @@ const App: React.FC = () => {
     setNotifications(prev => prev.filter(n => n.id !== id));
   }, []);
 
-  const syncData = useCallback(async () => {
-    try {
-      const res = await fetch(`/api?action=get_messages&t=${Date.now()}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) setMessages(data);
-      }
-    } catch (e) {
-      console.warn("NEXA_SYNC_WARNING: API temporarily unreachable.");
-    }
+  // Sinkronisasi lokal (Memeriksa reset 07:00)
+  const syncLocalData = useCallback(() => {
+    const db = getDB();
+    setMessages(db.messages);
   }, []);
 
   const initApp = useCallback(async (retryCount = 0) => {
     try {
       setErrorDetails('Menghubungkan ke Nexa Core...');
+      
+      // Ping API tetap ada untuk memastikan konektivitas sistem & Auth
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
-
       const res = await fetch('/api?action=ping', { signal: controller.signal });
       clearTimeout(timeoutId);
 
       if (!res.ok) throw new Error(`HTTP_${res.status}`);
       
-      const data = await res.json();
-      if (data.status !== 'ONLINE') throw new Error("API_STATUS_INVALID");
-
       const saved = localStorage.getItem('nexa_session');
       if (saved) {
         try {
@@ -75,14 +68,14 @@ const App: React.FC = () => {
         }
       }
       
-      await syncData();
+      // Ambil pesan dari penyimpanan lokal
+      syncLocalData();
+      
       setApiError(false);
       setIsInitializing(false);
     } catch (err: any) {
       console.error(`BOOT_ATTEMPT_${retryCount}_FAILED:`, err);
-      
-      if (retryCount < 2) {
-        setErrorDetails(`Mencoba kembali (${retryCount + 1}/3)...`);
+      if (retryCount < 1) {
         setTimeout(() => initApp(retryCount + 1), 2000);
       } else {
         setErrorDetails(err.message || 'Unknown Error');
@@ -90,17 +83,33 @@ const App: React.FC = () => {
         setIsInitializing(false);
       }
     }
-  }, [syncData]);
+  }, [syncLocalData]);
 
   useEffect(() => {
     initApp();
   }, [initApp]);
 
+  // Listener untuk BroadcastChannel (Sinkronisasi antar tab)
   useEffect(() => {
-    if (!user || apiError) return;
-    const interval = setInterval(syncData, 5000);
+    const handleBroadcast = (event: MessageEvent) => {
+      if (event.data.type === 'NEW_MESSAGE') {
+        setMessages(prev => {
+          // Cek jika pesan sudah ada (mencegah duplikasi)
+          if (prev.find(m => m.id === event.data.payload.id)) return prev;
+          return [...prev, event.data.payload];
+        });
+      }
+    };
+
+    chatChannel.addEventListener('message', handleBroadcast);
+    return () => chatChannel.removeEventListener('message', handleBroadcast);
+  }, []);
+
+  // Interval untuk memeriksa reset 07:00 setiap menit
+  useEffect(() => {
+    const interval = setInterval(syncLocalData, 60000);
     return () => clearInterval(interval);
-  }, [user, syncData, apiError]);
+  }, [syncLocalData]);
 
   const handleLogin = (authenticatedUser: User) => {
     setUser(authenticatedUser);
@@ -118,38 +127,14 @@ const App: React.FC = () => {
   if (apiError) {
     return (
       <div className="h-[100dvh] w-full bg-black flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-700">
-        <div className="relative mb-8">
-           <div className="absolute inset-0 bg-red-500/10 blur-[40px] rounded-full animate-pulse"></div>
-           <div className="w-24 h-24 rounded-[32px] glass border-red-500/20 flex items-center justify-center relative z-10">
-              <WifiOff size={48} className="text-red-500" />
-           </div>
+        <div className="w-24 h-24 rounded-[32px] glass border-red-500/20 flex items-center justify-center mb-8">
+           <WifiOff size={48} className="text-red-500" />
         </div>
-        
         <h1 className="text-2xl font-black uppercase tracking-[0.2em] text-white mb-2">SISTEM OFFLINE</h1>
-        <p className="text-[10px] text-gray-500 uppercase tracking-[0.3em] leading-relaxed max-w-xs mb-8">
-          Gagal membangun jabat tangan dengan Nexa Cloud.<br/>
-          <span className="text-red-900 font-bold">ERROR_CODE: {errorDetails}</span>
-        </p>
-
-        <div className="flex flex-col gap-3 w-full max-w-[200px]">
-          <button 
-            onClick={() => {
-              setIsInitializing(true);
-              setApiError(false);
-              initApp(0);
-            }} 
-            className="w-full h-14 bg-white text-black font-black text-[10px] rounded-full uppercase tracking-[0.3em] flex items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-xl shadow-white/5"
-          >
-            <RefreshCcw size={14} /> RE-INITIALIZE
-          </button>
-          
-          <button 
-            onClick={() => window.location.reload()} 
-            className="w-full h-14 glass text-white/50 font-black text-[10px] rounded-full uppercase tracking-[0.3em] hover:text-white transition-all"
-          >
-            HARD RELOAD
-          </button>
-        </div>
+        <p className="text-[10px] text-gray-500 uppercase tracking-[0.3em] mb-8">Koneksi API Gagal. Chat Lokal Tetap Tersedia Setelah Login.</p>
+        <button onClick={() => window.location.reload()} className="w-full max-w-[200px] h-14 bg-white text-black font-black text-[10px] rounded-full uppercase tracking-[0.3em] flex items-center justify-center gap-2">
+          <RefreshCcw size={14} /> RE-INITIALIZE
+        </button>
       </div>
     );
   }
@@ -173,8 +158,8 @@ const App: React.FC = () => {
               <div>
                 <h1 className="text-3xl font-black tracking-tighter">NEXA</h1>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">CLOUD CONNECTED</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">LOCAL SECURE NODE</span>
                 </div>
               </div>
               <button onClick={handleLogout} className="p-2 rounded-full glass hover:bg-white/10 transition-all">
