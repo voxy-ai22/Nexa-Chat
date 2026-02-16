@@ -1,0 +1,8 @@
+{
+  "name": "NEXA GLOBAL",
+  "description": "Aplikasi obrolan monokrom premium dengan Glassmorphism terinspirasi iOS, perpesanan waktu nyata, dan lapisan keamanan tingkat lanjut.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
