@@ -1,5 +1,5 @@
 
-import React, { ErrorInfo, ReactNode } from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { ShieldAlert, RefreshCw } from 'lucide-react';
 
 interface Props {
@@ -15,15 +15,11 @@ interface State {
  * Standard ErrorBoundary implementation for NEXA Global System.
  * Captures JavaScript errors anywhere in their child component tree.
  */
-// Extending React.Component with generic Props and State ensures that 'this.props' and 'this.state' are correctly recognized by the TypeScript compiler
-class ErrorBoundary extends React.Component<Props, State> {
-  // Fix: Explicitly defining constructor and using React.Component to resolve inheritance typing issues where 'this.props' was not recognized
-  constructor(props: Props) {
-    super(props);
-    this.state = {
-      hasError: false
-    };
-  }
+class ErrorBoundary extends Component<Props, State> {
+  // Initializing state as a class property to ensure TypeScript correctly associates it with the Component base class
+  public state: State = {
+    hasError: false
+  };
 
   // Static method to update state so the next render will show the fallback UI
   public static getDerivedStateFromError(_: Error): State {
@@ -37,6 +33,7 @@ class ErrorBoundary extends React.Component<Props, State> {
 
   public render() {
     // If an error state is caught, render the system failure UI
+    // Accessing state from this.state which is now properly inherited from Component<Props, State>
     if (this.state.hasError) {
       return (
         <div className="h-screen w-full bg-black flex flex-col items-center justify-center p-8 text-center">
@@ -55,7 +52,7 @@ class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // Access children from this.props which is now properly inherited from React.Component<Props, State>
+    // Access children from this.props which is now properly inherited from Component base class
     return this.props.children || null;
   }
 }

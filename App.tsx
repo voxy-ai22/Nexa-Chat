@@ -6,11 +6,12 @@ import {
   Lightbulb, 
   User as UserIcon,
   LogOut,
-  WifiOff
+  WifiOff,
+  RefreshCcw
 } from 'lucide-react';
 import { View, User, Message, AppNotification } from './types';
 
-// Lazy loading components for better boot performance
+// Lazy loading components
 const ChatView = lazy(() => import('./components/ChatView'));
 const TicketView = lazy(() => import('./components/TicketView'));
 const SaranView = lazy(() => import('./components/SaranView'));
@@ -24,6 +25,7 @@ import SplashScreen from './components/SplashScreen';
 const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [apiError, setApiError] = useState(false);
+  const [errorDetails, setErrorDetails] = useState<string>('');
   const [user, setUser] = useState<User | null>(null);
   const [activeView, setActiveView] = useState<View>(View.CHAT);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -40,62 +42,65 @@ const App: React.FC = () => {
 
   const syncData = useCallback(async () => {
     try {
-      // Menambahkan cache-buster untuk menghindari respon stale
       const res = await fetch(`/api?action=get_messages&t=${Date.now()}`);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) setMessages(data);
       }
     } catch (e) {
-      console.error("SYNC_FAILED", e);
+      console.warn("NEXA_SYNC_WARNING: API temporarily unreachable.");
     }
   }, []);
 
-  useEffect(() => {
-    let mounted = true;
+  const initApp = useCallback(async (retryCount = 0) => {
+    try {
+      setErrorDetails('Menghubungkan ke Nexa Core...');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    const initApp = async () => {
-      try {
-        // Coba hubungi API dengan timeout 10 detik
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch('/api?action=ping', { signal: controller.signal });
+      clearTimeout(timeoutId);
 
-        const res = await fetch('/api?action=ping', { signal: controller.signal });
-        clearTimeout(timeoutId);
+      if (!res.ok) throw new Error(`HTTP_${res.status}`);
+      
+      const data = await res.json();
+      if (data.status !== 'ONLINE') throw new Error("API_STATUS_INVALID");
 
-        if (!res.ok) throw new Error(`HTTP_ERROR_${res.status}`);
-        
-        if (mounted) {
-          const saved = localStorage.getItem('nexa_session');
-          if (saved) {
-            try {
-              setUser(JSON.parse(saved));
-            } catch (e) {
-              localStorage.removeItem('nexa_session');
-            }
-          }
-          
-          await syncData();
-          setIsInitializing(false);
-        }
-      } catch (err) {
-        console.error("BOOT_FAILURE_DETAILS:", err);
-        if (mounted) {
-          setApiError(true);
-          setIsInitializing(false);
+      const saved = localStorage.getItem('nexa_session');
+      if (saved) {
+        try {
+          setUser(JSON.parse(saved));
+        } catch (e) {
+          localStorage.removeItem('nexa_session');
         }
       }
-    };
-
-    initApp();
-    return () => { mounted = false; };
+      
+      await syncData();
+      setApiError(false);
+      setIsInitializing(false);
+    } catch (err: any) {
+      console.error(`BOOT_ATTEMPT_${retryCount}_FAILED:`, err);
+      
+      if (retryCount < 2) {
+        setErrorDetails(`Mencoba kembali (${retryCount + 1}/3)...`);
+        setTimeout(() => initApp(retryCount + 1), 2000);
+      } else {
+        setErrorDetails(err.message || 'Unknown Error');
+        setApiError(true);
+        setIsInitializing(false);
+      }
+    }
   }, [syncData]);
 
   useEffect(() => {
-    if (!user) return;
+    initApp();
+  }, [initApp]);
+
+  useEffect(() => {
+    if (!user || apiError) return;
     const interval = setInterval(syncData, 5000);
     return () => clearInterval(interval);
-  }, [user, syncData]);
+  }, [user, syncData, apiError]);
 
   const handleLogin = (authenticatedUser: User) => {
     setUser(authenticatedUser);
@@ -112,20 +117,39 @@ const App: React.FC = () => {
 
   if (apiError) {
     return (
-      <div className="h-[100dvh] w-full bg-black flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-500">
-        <div className="w-24 h-24 rounded-full bg-red-500/10 flex items-center justify-center mb-6 border border-red-500/20">
-          <WifiOff size={48} className="text-red-500 animate-pulse" />
+      <div className="h-[100dvh] w-full bg-black flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-700">
+        <div className="relative mb-8">
+           <div className="absolute inset-0 bg-red-500/10 blur-[40px] rounded-full animate-pulse"></div>
+           <div className="w-24 h-24 rounded-[32px] glass border-red-500/20 flex items-center justify-center relative z-10">
+              <WifiOff size={48} className="text-red-500" />
+           </div>
         </div>
-        <h1 className="text-2xl font-black uppercase tracking-widest text-white mb-2">SISTEM OFFLINE</h1>
-        <p className="text-[10px] text-gray-500 uppercase tracking-[0.3em] leading-relaxed max-w-xs">
-          Gagal membangun jabat tangan dengan infrastruktur Nexa Cloud. Pastikan koneksi internet stabil atau coba lagi nanti.
+        
+        <h1 className="text-2xl font-black uppercase tracking-[0.2em] text-white mb-2">SISTEM OFFLINE</h1>
+        <p className="text-[10px] text-gray-500 uppercase tracking-[0.3em] leading-relaxed max-w-xs mb-8">
+          Gagal membangun jabat tangan dengan Nexa Cloud.<br/>
+          <span className="text-red-900 font-bold">ERROR_CODE: {errorDetails}</span>
         </p>
-        <button 
-          onClick={() => window.location.reload()} 
-          className="mt-10 px-10 py-4 bg-white text-black font-black text-[10px] rounded-full uppercase tracking-[0.4em] hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-white/5"
-        >
-          RE-INITIALIZE
-        </button>
+
+        <div className="flex flex-col gap-3 w-full max-w-[200px]">
+          <button 
+            onClick={() => {
+              setIsInitializing(true);
+              setApiError(false);
+              initApp(0);
+            }} 
+            className="w-full h-14 bg-white text-black font-black text-[10px] rounded-full uppercase tracking-[0.3em] flex items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-xl shadow-white/5"
+          >
+            <RefreshCcw size={14} /> RE-INITIALIZE
+          </button>
+          
+          <button 
+            onClick={() => window.location.reload()} 
+            className="w-full h-14 glass text-white/50 font-black text-[10px] rounded-full uppercase tracking-[0.3em] hover:text-white transition-all"
+          >
+            HARD RELOAD
+          </button>
+        </div>
       </div>
     );
   }
