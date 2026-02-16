@@ -10,10 +10,15 @@ interface State {
   hasError: boolean;
 }
 
+// Standard ErrorBoundary implementation for NEXA Global System
 class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false
-  };
+  // Explicitly initialize state and call super(props) to resolve TypeScript inheritance issues for 'this.props'
+  constructor(props: Props) {
+    super(props);
+    this.state = {
+      hasError: false
+    };
+  }
 
   public static getDerivedStateFromError(_: Error): State {
     return { hasError: true };
@@ -42,7 +47,7 @@ class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    // Fixed: children is a property of this.props in React class components
+    // Children is correctly accessed from this.props which is inherited from Component<Props, State>
     return this.props.children;
   }
 }
