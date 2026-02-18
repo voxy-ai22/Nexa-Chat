@@ -1,4 +1,4 @@
-import React, { ErrorInfo, ReactNode } from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { ShieldAlert, RefreshCw } from 'lucide-react';
 
 interface Props {
@@ -14,15 +14,12 @@ interface State {
  * Standard ErrorBoundary implementation for NEXA Global System.
  * Captures JavaScript errors anywhere in their child component tree.
  */
-// Use React.Component explicitly to resolve inheritance issues in some TypeScript environments.
-class ErrorBoundary extends React.Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    // Initializing state in constructor. Extending React.Component ensures 'this.state' is correctly defined.
-    this.state = {
-      hasError: false
-    };
-  }
+// Fix: Explicitly extend Component from 'react' to ensure props and state types are correctly inherited.
+class ErrorBoundary extends Component<Props, State> {
+  // Fix: Explicitly declare and initialize state as a class property to resolve "Property 'state' does not exist" errors.
+  public state: State = {
+    hasError: false
+  };
 
   // Static method to update state so the next render will show the fallback UI.
   public static getDerivedStateFromError(_: Error): State {
@@ -35,8 +32,7 @@ class ErrorBoundary extends React.Component<Props, State> {
   }
 
   public render() {
-    // If an error state is caught, render the system failure UI.
-    // Accessing state from this.state which is now properly inherited from React.Component.
+    // Fix: Access state via 'this.state' which is now correctly recognized as inherited from Component.
     if (this.state.hasError) {
       return (
         <div className="h-screen w-full bg-black flex flex-col items-center justify-center p-8 text-center">
@@ -55,7 +51,7 @@ class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // Access children from this.props which is correctly defined in the React.Component base class.
+    // Fix: Access props via 'this.props' which is now correctly recognized as inherited from Component.
     return this.props.children || null;
   }
 }
