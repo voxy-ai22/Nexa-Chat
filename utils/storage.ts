@@ -8,7 +8,8 @@ interface Database {
   messages: Message[];
   tickets: Ticket[];
   suggestions: Suggestion[];
-  lastReset: string; // ISO Date of last reset
+  favoriteStickers: string[]; // Daftar URL stiker favorit
+  lastReset: string; 
 }
 
 const getInitialDB = (): Database => {
@@ -19,6 +20,7 @@ const getInitialDB = (): Database => {
     messages: [],
     tickets: [],
     suggestions: [],
+    favoriteStickers: [],
     lastReset: new Date().toISOString()
   };
 };
@@ -33,12 +35,10 @@ export const getDB = (): Database => {
   const db = getInitialDB();
   const now = new Date();
   
-  // LOGIKA RESET 07:00 AM
   const lastResetDate = new Date(db.lastReset);
   const resetPoint = new Date();
   resetPoint.setHours(7, 0, 0, 0);
 
-  // Jika waktu sekarang sudah lewat jam 7 pagi DAN reset terakhir dilakukan sebelum jam 7 hari ini
   if (now >= resetPoint && (lastResetDate < resetPoint)) {
     db.messages = [];
     db.lastReset = new Date().toISOString();
@@ -48,7 +48,18 @@ export const getDB = (): Database => {
   return db;
 };
 
-// BroadcastChannel untuk sinkronisasi antar tab tanpa database
+export const toggleFavoriteSticker = (url: string) => {
+  const db = getDB();
+  let favorites = db.favoriteStickers || [];
+  if (favorites.includes(url)) {
+    favorites = favorites.filter(s => s !== url);
+  } else {
+    favorites = [...favorites, url];
+  }
+  saveToDB({ favoriteStickers: favorites });
+  return favorites;
+};
+
 export const chatChannel = new BroadcastChannel('nexa_chat_sync');
 
 export const broadcastMessage = (message: Message) => {

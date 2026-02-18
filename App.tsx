@@ -7,7 +7,8 @@ import {
   User as UserIcon,
   LogOut,
   WifiOff,
-  RefreshCcw
+  RefreshCcw,
+  ShieldAlert
 } from 'lucide-react';
 import { View, User, Message, AppNotification } from './types';
 import { getDB, chatChannel } from './utils/storage';
@@ -25,6 +26,7 @@ import SplashScreen from './components/SplashScreen';
 
 const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
+  const [isLocalOnly, setIsLocalOnly] = useState(false);
   const [apiError, setApiError] = useState(false);
   const [errorDetails, setErrorDetails] = useState<string>('');
   const [user, setUser] = useState<User | null>(null);
@@ -41,7 +43,6 @@ const App: React.FC = () => {
     setNotifications(prev => prev.filter(n => n.id !== id));
   }, []);
 
-  // Sinkronisasi lokal (Memeriksa reset 07:00)
   const syncLocalData = useCallback(() => {
     const db = getDB();
     setMessages(db.messages);
@@ -51,13 +52,24 @@ const App: React.FC = () => {
     try {
       setErrorDetails('Menghubungkan ke Nexa Core...');
       
-      // Ping API tetap ada untuk memastikan konektivitas sistem & Auth
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch('/api?action=ping', { signal: controller.signal });
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const res = await fetch('/api?action=ping', { signal: controller.signal })
+        .catch(err => {
+          if (err.name === 'AbortError') throw new Error('TIMEOUT');
+          return { ok: false, status: 404 }; // Fallback for network error
+        });
+
       clearTimeout(timeoutId);
 
-      if (!res.ok) throw new Error(`HTTP_${res.status}`);
+      // Jika 404 (Endpoint API tidak ditemukan di environment ini), gunakan mode lokal
+      if (res.status === 404) {
+        console.warn("NEXA_SYSTEM: API Node not found. Entering Isolated Mode.");
+        setIsLocalOnly(true);
+      } else if (!res.ok) {
+        throw new Error(`HTTP_${res.status}`);
+      }
       
       const saved = localStorage.getItem('nexa_session');
       if (saved) {
@@ -68,19 +80,24 @@ const App: React.FC = () => {
         }
       }
       
-      // Ambil pesan dari penyimpanan lokal
       syncLocalData();
-      
       setApiError(false);
       setIsInitializing(false);
     } catch (err: any) {
       console.error(`BOOT_ATTEMPT_${retryCount}_FAILED:`, err);
+      // Jika error bukan 404 tapi sesuatu yang fatal (seperti 500 terus menerus)
       if (retryCount < 1) {
-        setTimeout(() => initApp(retryCount + 1), 2000);
+        setTimeout(() => initApp(retryCount + 1), 1500);
       } else {
         setErrorDetails(err.message || 'Unknown Error');
-        setApiError(true);
-        setIsInitializing(false);
+        // Tetap biarkan masuk jika 404 terdeteksi sebelumnya
+        if (err.message?.includes('404')) {
+          setIsLocalOnly(true);
+          setIsInitializing(false);
+        } else {
+          setApiError(true);
+          setIsInitializing(false);
+        }
       }
     }
   }, [syncLocalData]);
@@ -89,23 +106,19 @@ const App: React.FC = () => {
     initApp();
   }, [initApp]);
 
-  // Listener untuk BroadcastChannel (Sinkronisasi antar tab)
   useEffect(() => {
     const handleBroadcast = (event: MessageEvent) => {
       if (event.data.type === 'NEW_MESSAGE') {
         setMessages(prev => {
-          // Cek jika pesan sudah ada (mencegah duplikasi)
           if (prev.find(m => m.id === event.data.payload.id)) return prev;
           return [...prev, event.data.payload];
         });
       }
     };
-
     chatChannel.addEventListener('message', handleBroadcast);
     return () => chatChannel.removeEventListener('message', handleBroadcast);
   }, []);
 
-  // Interval untuk memeriksa reset 07:00 setiap menit
   useEffect(() => {
     const interval = setInterval(syncLocalData, 60000);
     return () => clearInterval(interval);
@@ -124,17 +137,24 @@ const App: React.FC = () => {
 
   if (isInitializing) return <SplashScreen />;
 
-  if (apiError) {
+  if (apiError && !isLocalOnly) {
     return (
       <div className="h-[100dvh] w-full bg-black flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-700">
         <div className="w-24 h-24 rounded-[32px] glass border-red-500/20 flex items-center justify-center mb-8">
            <WifiOff size={48} className="text-red-500" />
         </div>
         <h1 className="text-2xl font-black uppercase tracking-[0.2em] text-white mb-2">SISTEM OFFLINE</h1>
-        <p className="text-[10px] text-gray-500 uppercase tracking-[0.3em] mb-8">Koneksi API Gagal. Chat Lokal Tetap Tersedia Setelah Login.</p>
-        <button onClick={() => window.location.reload()} className="w-full max-w-[200px] h-14 bg-white text-black font-black text-[10px] rounded-full uppercase tracking-[0.3em] flex items-center justify-center gap-2">
-          <RefreshCcw size={14} /> RE-INITIALIZE
-        </button>
+        <p className="text-[10px] text-gray-500 uppercase tracking-[0.3em] mb-8">
+          Koneksi API Gagal ({errorDetails}).
+        </p>
+        <div className="flex flex-col w-full max-w-[200px] gap-3">
+          <button onClick={() => window.location.reload()} className="h-14 bg-white text-black font-black text-[10px] rounded-full uppercase tracking-[0.3em] flex items-center justify-center gap-2">
+            <RefreshCcw size={14} /> RE-INITIALIZE
+          </button>
+          <button onClick={() => { setIsLocalOnly(true); setApiError(false); }} className="h-14 glass text-white font-black text-[10px] rounded-full uppercase tracking-[0.3em] flex items-center justify-center gap-2">
+            <ShieldAlert size={14} /> FORCED LOCAL MODE
+          </button>
+        </div>
       </div>
     );
   }
@@ -158,8 +178,10 @@ const App: React.FC = () => {
               <div>
                 <h1 className="text-3xl font-black tracking-tighter">NEXA</h1>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">LOCAL SECURE NODE</span>
+                  <span className={`w-1.5 h-1.5 rounded-full ${isLocalOnly ? 'bg-orange-500' : 'bg-blue-500'} animate-pulse`}></span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                    {isLocalOnly ? 'ISOLATED NODE' : 'GLOBAL SECURE NODE'}
+                  </span>
                 </div>
               </div>
               <button onClick={handleLogout} className="p-2 rounded-full glass hover:bg-white/10 transition-all">

@@ -20,8 +20,10 @@ export interface Message {
   userName: string;
   userAvatar: string;
   text: string;
+  imageUrl?: string;
+  stickerUrl?: string; // Properti baru untuk stiker
   timestamp: number;
-  role: 'user' | 'admin';
+  role: 'user' | 'admin' | 'bot';
 }
 
 export interface Ticket {
