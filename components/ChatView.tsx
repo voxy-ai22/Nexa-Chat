@@ -3,8 +3,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User, Message } from '../types';
 import { Send, AlertTriangle, Smile, Star, X, Zap, Heart, Brain, Cpu, MessageSquare, Image as ImageIcon, Flag } from 'lucide-react';
 import { saveToDB, broadcastMessage, getDB, toggleFavoriteSticker } from '../utils/storage';
-// Import the Gemini AI integration
-import { getAISuggestion } from '../lib/gemini';
 
 interface ChatViewProps {
   user: User;
@@ -43,6 +41,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
   const [activeGame, setActiveGame] = useState<ActiveGame | null>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
+  // API KEY & ENDPOINT dari instruksi user
   const API_KEY_NEOXR = "BA1vTv";
 
   useEffect(() => {
@@ -130,7 +129,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
     try {
       const lowerText = text.toLowerCase().trim();
 
-      // --- JAWABAN GAME CHECKER ---
+      // --- LOGIKA GAME CHECKER ---
       if (activeGame && !lowerText.startsWith('.')) {
         if (lowerText === activeGame.answer.toLowerCase().trim()) {
           addBotMessage(`🎉 JAWABAN ANDA BENAR!\n\nJawaban: ${activeGame.answer.toUpperCase()}\n${activeGame.description ? `Deskripsi: ${activeGame.description}` : ''}`, { 
@@ -139,7 +138,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
           });
           setActiveGame(null);
         } else {
-          addBotMessage(`❌ JAWABAN SALAH!\nCoba lagi atau ketik .nyerah`, { 
+          addBotMessage(`❌ JAWABAN ANDA SALAH!\nCoba lagi atau ketik .nyerah`, { 
             name: 'NEXA GAME', 
             avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Ops' 
           });
@@ -150,11 +149,13 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
 
       // --- COMMAND HANDLERS ---
       
-      // 1. .AI (Switching to Gemini model for elite business consulting)
+      // 1. .AI (Menggunakan Neoxr API sesuai instruksi)
       if (lowerText.startsWith('.ai ')) {
         const query = text.slice(4).trim();
-        // Fix: Leverage Gemini AI via the defined business consultant utility
-        const aiResponse = await getAISuggestion(query);
+        const res = await fetch(`https://api.neoxr.eu/api/gpt-pro?q=${encodeURIComponent(query)}&apikey=${API_KEY_NEOXR}`);
+        const data = await res.json();
+        // Mengambil respons dari properti data.data.message
+        const aiResponse = data.data?.message || data.message || "Gagal mendapatkan respons dari NEXA AI Hub.";
         addBotMessage(aiResponse, { 
           name: 'NEXA AI HUB', 
           avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AIHub' 
@@ -188,7 +189,6 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
         const res = await fetch(`https://api.neoxr.eu/api/whatimg?apikey=${API_KEY_NEOXR}`);
         const data = await res.json();
         if (data.status) {
-          // data.data mengandung image, deskripsi, jawaban
           addBotMessage(`🖼️ TEBAK GAMBAR\nApa maksud dari gambar di atas?\n\nKetik jawaban Anda!`, { 
             name: 'NEXA GAME', 
             avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=VisualGame',
