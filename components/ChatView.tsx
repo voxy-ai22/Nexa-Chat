@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User, Message } from '../types';
 import { Send, AlertTriangle, Smile, Star, X, Zap, Heart, Brain, Cpu, MessageSquare, Image as ImageIcon, Flag } from 'lucide-react';
 import { saveToDB, broadcastMessage, getDB, toggleFavoriteSticker } from '../utils/storage';
-// Fix: Import our elite Gemini-powered consulting engine
+// Import the Gemini AI integration
 import { getAISuggestion } from '../lib/gemini';
 
 interface ChatViewProps {
@@ -98,10 +98,10 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
     const text = customMsg?.text || inputText.trim();
     if ((!text && !customMsg?.stickerUrl && !customMsg?.imageUrl) || isBanned || cooldown > 0 || isSending) return;
 
-    if (messageCount >= 40) {
+    if (messageCount >= 60) {
       setIsBanned(true);
       setBanTimeRemaining(300);
-      notify("ANTISPAM AKTIF: AKSES DIBLOKIR", "alert");
+      notify("ANTISPAM SECURITY: ACCESS RESTRICTED", "alert");
       return;
     }
 
@@ -128,45 +128,70 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
     setMessageCount(prev => prev + 1);
 
     try {
-      const lowerText = text.toLowerCase();
+      const lowerText = text.toLowerCase().trim();
 
-      // LOGIKA PENGECEKAN JAWABAN GAME
+      // --- JAWABAN GAME CHECKER ---
       if (activeGame && !lowerText.startsWith('.')) {
-        if (lowerText === activeGame.answer.toLowerCase()) {
-          addBotMessage(`🎉 JAWABAN ANDA BENAR!\n\n${activeGame.description || ''}`, { name: 'NEXA GAME', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Win' });
+        if (lowerText === activeGame.answer.toLowerCase().trim()) {
+          addBotMessage(`🎉 JAWABAN ANDA BENAR!\n\nJawaban: ${activeGame.answer.toUpperCase()}\n${activeGame.description ? `Deskripsi: ${activeGame.description}` : ''}`, { 
+            name: 'NEXA GAME', 
+            avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Winner' 
+          });
           setActiveGame(null);
         } else {
-          addBotMessage(`❌ JAWABAN SALAH!\nCoba lagi atau ketik .nyerah`, { name: 'NEXA GAME' });
+          addBotMessage(`❌ JAWABAN SALAH!\nCoba lagi atau ketik .nyerah`, { 
+            name: 'NEXA GAME', 
+            avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Ops' 
+          });
         }
         setIsSending(false);
         return;
       }
 
-      // COMMAND HANDLERS
+      // --- COMMAND HANDLERS ---
+      
+      // 1. .AI (Switching to Gemini model for elite business consulting)
       if (lowerText.startsWith('.ai ')) {
         const query = text.slice(4).trim();
-        // Fix: Replace external generic GPT API with Nexa's own high-performance Gemini AI for premium business insights
+        // Fix: Leverage Gemini AI via the defined business consultant utility
         const aiResponse = await getAISuggestion(query);
-        addBotMessage(aiResponse, { name: 'NEXA AI', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Nexa' });
+        addBotMessage(aiResponse, { 
+          name: 'NEXA AI HUB', 
+          avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AIHub' 
+        });
       } 
+      
+      // 2. .NYERAH (SURRENDER)
       else if (lowerText === '.nyerah' && activeGame) {
-        addBotMessage(`🏳️ ANDA MENYERAH.\nJawaban yang benar adalah: ${activeGame.answer.toUpperCase()}`, { name: 'NEXA GAME' });
+        addBotMessage(`🏳️ PROTOKOL MENYERAH.\nJawaban yang benar adalah: ${activeGame.answer.toUpperCase()}`, { 
+          name: 'NEXA GAME', 
+          avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=WhiteFlag' 
+        });
         setActiveGame(null);
       }
+      
+      // 3. .ASAHOTAK
       else if (lowerText === '.asahotak') {
         const res = await fetch(`https://api.nexray.web.id/games/asahotak`);
         const data = await res.json();
         if (data.status) {
-          addBotMessage(`🧩 ASAH OTAK\n\nSoal: ${data.result.soal}\n\nKetik jawaban Anda langsung di chat!`, { name: 'NEXA GAME' });
+          addBotMessage(`🧩 ASAH OTAK\n\nSoal: ${data.result.soal}\n\nKetik jawaban Anda langsung di sini!`, { 
+            name: 'NEXA GAME',
+            avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=PuzzleGame'
+          });
           setActiveGame({ type: 'asahotak', answer: data.result.jawaban });
         }
       } 
+      
+      // 4. .TEBAKGAMBAR (NEOXR)
       else if (lowerText === '.tebakgambar') {
         const res = await fetch(`https://api.neoxr.eu/api/whatimg?apikey=${API_KEY_NEOXR}`);
         const data = await res.json();
         if (data.status) {
+          // data.data mengandung image, deskripsi, jawaban
           addBotMessage(`🖼️ TEBAK GAMBAR\nApa maksud dari gambar di atas?\n\nKetik jawaban Anda!`, { 
             name: 'NEXA GAME', 
+            avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=VisualGame',
             imageUrl: data.data.image 
           });
           setActiveGame({ 
@@ -176,21 +201,28 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
           });
         }
       }
+      
+      // 5. .BRAT
       else if (lowerText.startsWith('.brat ')) {
         const query = text.slice(6).trim();
         addBotMessage(`GENERATED BRAT: "${query}"`, { imageUrl: `https://api.nexray.web.id/maker/brathd?text=${encodeURIComponent(query)}` });
       }
+      
+      // 6. .IQC
       else if (lowerText.startsWith('.iqc ')) {
         const query = text.slice(5).trim();
         addBotMessage(`GENERATED IQC: "${query}"`, { imageUrl: `https://api.nexray.web.id/maker/iqc?text=${encodeURIComponent(query)}` });
       }
+      
+      // 7. .STICKER (RANDOM)
       else if (lowerText === '.sticker') {
         const randomSticker = DEFAULT_STICKERS[Math.floor(Math.random() * DEFAULT_STICKERS.length)];
         addBotMessage("", { stickerUrl: randomSticker });
       }
 
     } catch (err) {
-      notify("KESALAHAN API BOT", "alert");
+      console.error("NEXA_CORE_ERROR:", err);
+      notify("KESALAHAN TRANSMISI BOT", "alert");
     } finally {
       setIsSending(false);
     }
@@ -204,15 +236,15 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
     e.stopPropagation();
     const newFavs = toggleFavoriteSticker(url);
     setFavorites(newFavs);
-    notify(newFavs.includes(url) ? "SIMPAN KE KOLEKSI" : "DIHAPUS DARI KOLEKSI", "success");
+    notify(newFavs.includes(url) ? "TERSIMPAN DI KOLEKSI" : "DIHAPUS DARI KOLEKSI", "success");
   };
 
   return (
     <div className="flex flex-col h-full bg-black relative overflow-hidden">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pt-4 pb-52 space-y-6 scroll-smooth">
-        <div className="px-4 py-3 glass rounded-2xl mb-4 border-blue-500/20 text-center">
-          <p className="text-[8px] font-black uppercase tracking-[0.3em] text-blue-400">
-            NEXA SECURE CHAT • AUTO-RESET 07:00 AM
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pt-4 pb-56 space-y-6 scroll-smooth">
+        <div className="px-4 py-3 glass rounded-2xl mb-4 border-white/5 text-center">
+          <p className="text-[8px] font-black uppercase tracking-[0.4em] text-white/40">
+            NEXA SECURE SESSION • AUTOMATIC DATABASE SYNC
           </p>
         </div>
 
@@ -235,10 +267,10 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
               <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[85%]`}>
                 {!isMe && (
                   <div className="flex items-center gap-2 mb-1 ml-1">
-                    <span className={`text-[9px] font-black uppercase tracking-widest ${isBot ? 'text-blue-400' : 'text-gray-500'}`}>
+                    <span className={`text-[9px] font-black uppercase tracking-widest ${isBot ? 'text-white/60' : 'text-gray-500'}`}>
                       {msg.userName}
                     </span>
-                    {isBot && <span className="bg-blue-600 text-white text-[6px] font-black px-1.5 rounded-sm">BOT</span>}
+                    {isBot && <span className="bg-white/10 text-white/80 text-[6px] font-black px-1.5 rounded-sm uppercase tracking-tighter">NEXA_BOT</span>}
                   </div>
                 )}
                 
@@ -246,7 +278,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
                   <div className="relative group cursor-pointer" onClick={(e) => handleToggleFav(e, msg.stickerUrl!)}>
                     <img src={msg.stickerUrl} className="w-32 h-32 object-contain animate-in zoom-in-90 duration-300" alt="sticker" />
                     <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-all">
-                      <div className={`p-1.5 rounded-full glass border-white/20 ${isAlreadyFav ? 'bg-yellow-500 text-black border-transparent' : 'text-white'}`}>
+                      <div className={`p-1.5 rounded-full glass border-white/20 ${isAlreadyFav ? 'bg-white text-black border-transparent' : 'text-white'}`}>
                         <Star size={10} className={isAlreadyFav ? "fill-current" : ""} />
                       </div>
                     </div>
@@ -256,22 +288,22 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
                     isMe 
                       ? 'bg-white text-black rounded-tr-none border-transparent shadow-lg shadow-white/5' 
                       : isBot 
-                        ? 'bg-blue-900/10 border-blue-500/20 text-white rounded-tl-none'
+                        ? 'bg-zinc-900/50 border-white/10 text-white rounded-tl-none'
                         : 'bg-zinc-900 border-white/5 text-white rounded-tl-none'
                   }`}>
                     {msg.text}
                     {isImage && (
                       <div className="mt-3 relative group/img">
-                        <div className="rounded-xl overflow-hidden border border-white/10 bg-black/50 shadow-2xl">
-                          <img src={msg.imageUrl} className="w-full h-auto max-h-72 object-contain" alt="bot-gen" />
+                        <div className="rounded-xl overflow-hidden border border-white/10 bg-black shadow-2xl">
+                          <img src={msg.imageUrl} className="w-full h-auto max-h-72 object-contain" alt="media" />
                         </div>
                         <button 
                           onClick={(e) => handleToggleFav(e, msg.imageUrl!)}
-                          className={`mt-2 w-full py-2.5 rounded-xl glass border-white/10 flex items-center justify-center gap-2 transition-all hover:bg-white/10 active:scale-95 ${isAlreadyFav ? 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30' : 'text-gray-400'}`}
+                          className={`mt-2 w-full py-2.5 rounded-xl glass border-white/10 flex items-center justify-center gap-2 transition-all hover:bg-white/10 active:scale-95 ${isAlreadyFav ? 'bg-white/10 text-white border-white/20' : 'text-gray-500'}`}
                         >
                           <Star size={12} className={isAlreadyFav ? "fill-current" : ""} />
                           <span className="text-[9px] font-black uppercase tracking-[0.2em]">
-                            {isAlreadyFav ? "TERSAVE" : "SAVE SEBAGAI STIKER"}
+                            {isAlreadyFav ? "DIKOLEKSI" : "KOLEKSI MEDIA"}
                           </span>
                         </button>
                       </div>
@@ -293,10 +325,22 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
               <span className="w-1 h-1 bg-white rounded-full animate-bounce [animation-delay:0.2s]"></span>
               <span className="w-1 h-1 bg-white rounded-full animate-bounce [animation-delay:0.4s]"></span>
             </div>
-            <span className="text-[8px] font-black uppercase tracking-widest">Nexa AI Memproses...</span>
+            <span className="text-[8px] font-black uppercase tracking-widest">NEXA_CORE_PROCESSING...</span>
           </div>
         )}
       </div>
+
+      {/* GAME STATUS OVERLAY */}
+      {activeGame && (
+        <div className="fixed bottom-52 left-1/2 -translate-x-1/2 z-30 px-6 py-2 glass-dark border border-white/20 rounded-full flex items-center gap-3 animate-in slide-in-from-bottom-2 shadow-2xl">
+          <Brain size={14} className="text-white animate-pulse" />
+          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white">GAME {activeGame.type.toUpperCase()} AKTIF</span>
+          <button onClick={() => handleSendMessage(undefined, { text: '.nyerah' })} className="flex items-center gap-1.5 pl-3 border-l border-white/10 text-red-500 hover:text-red-400 transition-colors">
+            <Flag size={10} />
+            <span className="text-[8px] font-black uppercase tracking-widest">NYERAH</span>
+          </button>
+        </div>
+      )}
 
       {/* STICKER PANEL */}
       {showStickers && (
@@ -304,21 +348,21 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
           <div className="flex items-center justify-between p-5 border-b border-white/5 bg-white/5">
             <div className="flex gap-6">
               <button onClick={() => setStickerTab('default')} className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${stickerTab === 'default' ? 'text-white scale-105' : 'text-gray-600'}`}>
-                <Zap size={14} className={stickerTab === 'default' ? 'text-blue-400' : ''} /> Nexa Pack
+                <Zap size={14} className={stickerTab === 'default' ? 'text-white' : ''} /> Nexa Pack
               </button>
               <button onClick={() => setStickerTab('fav')} className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${stickerTab === 'fav' ? 'text-white scale-105' : 'text-gray-600'}`}>
-                <Heart size={14} className={favorites.length > 0 ? "text-red-500 fill-red-500" : ""} /> Saved ({favorites.length})
+                <Heart size={14} className={favorites.length > 0 ? "text-white fill-white" : ""} /> Saved ({favorites.length})
               </button>
             </div>
             <button onClick={() => setShowStickers(false)} className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-gray-500 hover:text-white transition-colors">
               <X size={16} />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-5 grid grid-cols-4 gap-4 content-start bg-black/20">
+          <div className="flex-1 overflow-y-auto p-5 grid grid-cols-4 gap-4 content-start bg-black/40">
             {(stickerTab === 'default' ? DEFAULT_STICKERS : favorites).map((url, i) => (
               <div key={url + i} className="relative group aspect-square flex items-center justify-center bg-white/5 rounded-2xl hover:bg-white/10 transition-colors">
                 <img src={url} onClick={() => handleSendSticker(url)} className="w-[85%] h-[85%] object-contain cursor-pointer hover:scale-115 transition-transform active:scale-90" alt="sticker" />
-                <button onClick={(e) => handleToggleFav(e, url)} className={`absolute -top-1 -right-1 p-1.5 rounded-full glass border-white/20 opacity-0 group-hover:opacity-100 transition-all ${favorites.includes(url) ? 'bg-yellow-500 text-black border-transparent shadow-lg' : 'text-white'}`}>
+                <button onClick={(e) => handleToggleFav(e, url)} className={`absolute -top-1 -right-1 p-1.5 rounded-full glass border-white/20 opacity-0 group-hover:opacity-100 transition-all ${favorites.includes(url) ? 'bg-white text-black border-transparent shadow-lg' : 'text-white'}`}>
                   <Star size={10} className={favorites.includes(url) ? "fill-current" : ""} />
                 </button>
               </div>
@@ -327,19 +371,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
         </div>
       )}
 
-      {/* GAME STATUS BAR */}
-      {activeGame && (
-        <div className="fixed bottom-48 left-1/2 -translate-x-1/2 z-30 px-6 py-2 glass-dark border border-blue-500/30 rounded-full flex items-center gap-3 animate-in slide-in-from-bottom-2 shadow-2xl">
-          <Brain size={14} className="text-blue-400 animate-pulse" />
-          <span className="text-[9px] font-black uppercase tracking-widest text-white">SESI {activeGame.type.toUpperCase()} AKTIF</span>
-          <button onClick={() => handleSendMessage(undefined, { text: '.nyerah' })} className="flex items-center gap-1.5 pl-3 border-l border-white/10 hover:text-red-400 transition-colors">
-            <Flag size={10} />
-            <span className="text-[8px] font-black uppercase tracking-widest">NYERAH</span>
-          </button>
-        </div>
-      )}
-
-      {/* COMMAND SHORTCUTS */}
+      {/* QUICK ACTIONS */}
       {!showStickers && !isBanned && !activeGame && inputText.length === 0 && (
         <div className="fixed bottom-48 left-0 right-0 flex justify-center gap-2 px-4 z-30 overflow-x-auto no-scrollbar pb-2">
           <CommandTag icon={<Cpu size={12}/>} label=".ai" onClick={() => setInputText('.ai ')} />
@@ -361,11 +393,11 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               disabled={isBanned || isSending}
-              placeholder={isBanned ? "SISTEM TERKUNCI" : activeGame ? "Ketik jawaban Anda..." : "Ketik .ai / .asahotak / .tebakgambar"}
-              className="w-full bg-transparent border-none outline-none text-white text-[13px] font-medium placeholder:text-gray-700"
+              placeholder={isBanned ? "SISTEM TERKUNCI" : activeGame ? "Ketik jawaban Anda..." : "Tanya NEXA .ai / .tebakgambar / .asahotak"}
+              className="w-full bg-transparent border-none outline-none text-white text-[13px] font-medium placeholder:text-zinc-800"
             />
           </div>
-          <button type="submit" disabled={isBanned || !inputText.trim() || isSending} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${inputText.trim() && !isBanned && !isSending ? 'bg-white text-black shadow-lg shadow-white/20' : 'text-gray-800 bg-white/5'}`}>
+          <button type="submit" disabled={isBanned || !inputText.trim() || isSending} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${inputText.trim() && !isBanned && !isSending ? 'bg-white text-black shadow-lg shadow-white/20' : 'text-zinc-800 bg-white/5'}`}>
             <Send size={20} />
           </button>
         </form>
@@ -375,9 +407,9 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
 };
 
 const CommandTag: React.FC<{ icon: React.ReactNode, label: string, onClick: () => void }> = ({ icon, label, onClick }) => (
-  <button onClick={onClick} className="flex items-center gap-2 px-4 py-2 glass rounded-full border-white/10 hover:bg-white/10 transition-all active:scale-95 shrink-0">
+  <button onClick={onClick} className="flex items-center gap-2 px-4 py-2 glass rounded-full border-white/5 hover:bg-white/10 transition-all active:scale-95 shrink-0">
     {icon}
-    <span className="text-[10px] font-black uppercase tracking-widest text-white/80">{label}</span>
+    <span className="text-[10px] font-black uppercase tracking-widest text-white/60">{label}</span>
   </button>
 );
 
