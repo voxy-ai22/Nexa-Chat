@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Message } from '../types';
-import { Send, AlertTriangle, Smile, Star, X, Zap, Heart, Brain, Cpu, MessageSquare } from 'lucide-react';
+import { Send, AlertTriangle, Smile, Star, X, Zap, Heart, Brain, Cpu, MessageSquare, Image as ImageIcon, Flag } from 'lucide-react';
 import { saveToDB, broadcastMessage, getDB, toggleFavoriteSticker } from '../utils/storage';
-// Import the Gemini SDK wrapper
+// Fix: Import our elite Gemini-powered consulting engine
 import { getAISuggestion } from '../lib/gemini';
 
 interface ChatViewProps {
@@ -12,16 +13,20 @@ interface ChatViewProps {
   notify: (msg: string, type?: 'info' | 'success' | 'alert') => void;
 }
 
+interface ActiveGame {
+  type: 'asahotak' | 'tebakgambar';
+  answer: string;
+  description?: string;
+}
+
 const DEFAULT_STICKERS = [
   "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHI5ZzNidmxnMGswODFvNW9sZW15b2x0OHY2bXh6eGZpZnR5enp5ZSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/u0S44uH95P45N7Vj3q/giphy.gif",
   "https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExcWc1bWd0bXdzbWltZ25idWlsbXh6eGZpZnR5enp5ZSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/hV72l4Y6v0R3vE7W4q/giphy.gif",
   "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3Z0bXdzbWltZ25idWlsbXh6eGZpZnR5enp5ZSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/L8u0p3p5WpW4E/giphy.gif",
   "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHI5ZzNidmxnMGswODFvNW9sZW15b2x0OHY2bXh6eGZpZnR5enp5ZSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/3o7TKURP8M6jJ9q1Lq/giphy.gif",
   "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHI5ZzNidmxnMGswODFvNW9sZW15b2x0OHY2bXh6eGZpZnR5enp5ZSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/l41lMvD8p6O2p5F0A/giphy.gif",
-  "https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHI5ZzNidmxnMGswODFvNW9sZW15b2x0OHY2bXh6eGZpZnR5enp5ZSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/3o7TKv6f16Lsh2NnLq/giphy.gif",
   "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExYncwdHdyMmlyZmlzNnl1ZTVnY280dnV3eGZpZnR5enp5ZSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/T3VvAsu5P38pT7hY8c/giphy.gif",
   "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExYncwdHdyMmlyZmlzNnl1ZTVnY280dnV3eGZpZnR5enp5ZSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/joxg7Y1qB69YQYyYmQ/giphy.gif",
-  "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExZHhyeXp4ZWZpZnR5enp5ZSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/MDJ9NmCdkZ5F6/giphy.gif",
   "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExZ3N2ZXZmZWZpZnR5enp5ZSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/C9x8gX02SnMIo/giphy.gif"
 ];
 
@@ -35,8 +40,10 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
   const [showStickers, setShowStickers] = useState(false);
   const [stickerTab, setStickerTab] = useState<'default' | 'fav'>('default');
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [activeGame, setActiveGame] = useState<ActiveGame | null>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
+  const API_KEY_NEOXR = "BA1vTv";
 
   useEffect(() => {
     const db = getDB();
@@ -66,23 +73,41 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
     }
   }, [isBanned, banTimeRemaining]);
 
+  const addBotMessage = (text: string, options?: { imageUrl?: string, stickerUrl?: string, role?: string, name?: string, avatar?: string }) => {
+    const botMsg: Message = {
+      id: 'bot-' + Math.random().toString(36).substr(2, 9),
+      userId: 'nexa-bot',
+      userName: options?.name || 'NEXA BOT',
+      userAvatar: options?.avatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=Nexa',
+      text,
+      imageUrl: options?.imageUrl,
+      stickerUrl: options?.stickerUrl,
+      timestamp: Date.now(),
+      role: 'bot'
+    };
+    
+    setMessages(prev => [...prev, botMsg]);
+    const db = getDB();
+    saveToDB({ messages: [...db.messages, botMsg] });
+    broadcastMessage(botMsg);
+  };
+
   const handleSendMessage = async (e?: React.FormEvent, customMsg?: Partial<Message>) => {
     if (e) e.preventDefault();
     
     const text = customMsg?.text || inputText.trim();
     if ((!text && !customMsg?.stickerUrl && !customMsg?.imageUrl) || isBanned || cooldown > 0 || isSending) return;
 
-    if (messageCount >= 30) {
+    if (messageCount >= 40) {
       setIsBanned(true);
       setBanTimeRemaining(300);
-      notify("SISTEM PROTEKSI: AKSES DITUTUP SEMENTARA", "alert");
+      notify("ANTISPAM AKTIF: AKSES DIBLOKIR", "alert");
       return;
     }
 
     setIsSending(true);
-    const msgId = Math.random().toString(36).substr(2, 9);
     const newMessage: Message = {
-      id: msgId,
+      id: Math.random().toString(36).substr(2, 9),
       userId: user.id,
       userName: user.name,
       userAvatar: user.avatar,
@@ -93,102 +118,78 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
       role: user.role
     };
 
-    // UI Optimistic Update
     setMessages(prev => [...prev, newMessage]);
+    const db = getDB();
+    saveToDB({ messages: [...db.messages, newMessage] });
+    broadcastMessage(newMessage);
+    
     setInputText('');
     setCooldown(1);
     setMessageCount(prev => prev + 1);
 
     try {
-      const isBratCommand = text?.toLowerCase().startsWith('.brat ');
-      const isIqcCommand = text?.toLowerCase().startsWith('.iqc ');
-      const isAiCommand = text?.toLowerCase().startsWith('.ai ');
-      const isAsahOtakCommand = text?.toLowerCase() === '.asahotak';
-      const isStickerCommand = text?.toLowerCase() === '.sticker';
-      
-      let botMessage: Message | null = null;
+      const lowerText = text.toLowerCase();
 
-      // Handle Bot Commands
-      if (isBratCommand) {
-        const query = text.slice(6).trim();
-        botMessage = {
-          id: 'bot-' + Math.random().toString(36).substr(2, 9),
-          userId: 'nexa-bot',
-          userName: 'NEXA BOT',
-          userAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Nexa',
-          text: `GENERATE BRAT: "${query}"`,
-          imageUrl: `https://api.nexray.web.id/maker/brathd?text=${encodeURIComponent(query)}`,
-          timestamp: Date.now() + 500,
-          role: 'bot'
-        };
-      } else if (isIqcCommand) {
-        const query = text.slice(5).trim();
-        botMessage = {
-          id: 'bot-' + Math.random().toString(36).substr(2, 9),
-          userId: 'nexa-bot',
-          userName: 'NEXA BOT',
-          userAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Nexa',
-          text: `GENERATE IQC: "${query}"`,
-          imageUrl: `https://api.nexray.web.id/maker/iqc?text=${encodeURIComponent(query)}`,
-          timestamp: Date.now() + 500,
-          role: 'bot'
-        };
-      } else if (isAiCommand) {
-        // Fix: Use the official Gemini SDK via lib/gemini instead of an untrusted external fetch
+      // LOGIKA PENGECEKAN JAWABAN GAME
+      if (activeGame && !lowerText.startsWith('.')) {
+        if (lowerText === activeGame.answer.toLowerCase()) {
+          addBotMessage(`🎉 JAWABAN ANDA BENAR!\n\n${activeGame.description || ''}`, { name: 'NEXA GAME', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Win' });
+          setActiveGame(null);
+        } else {
+          addBotMessage(`❌ JAWABAN SALAH!\nCoba lagi atau ketik .nyerah`, { name: 'NEXA GAME' });
+        }
+        setIsSending(false);
+        return;
+      }
+
+      // COMMAND HANDLERS
+      if (lowerText.startsWith('.ai ')) {
         const query = text.slice(4).trim();
-        const aiResult = await getAISuggestion(query);
-        botMessage = {
-          id: 'bot-' + Math.random().toString(36).substr(2, 9),
-          userId: 'nexa-bot',
-          userName: 'NEXA AI',
-          userAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AI',
-          text: aiResult,
-          timestamp: Date.now() + 500,
-          role: 'bot'
-        };
-      } else if (isAsahOtakCommand) {
-        const response = await fetch(`https://api.nexray.web.id/games/asahotak`);
-        const data = await response.json();
-        botMessage = {
-          id: 'bot-' + Math.random().toString(36).substr(2, 9),
-          userId: 'nexa-bot',
-          userName: 'NEXA GAME',
-          userAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Game',
-          text: `🧩 ASAH OTAK\n\nSoal: ${data.result.soal}\n\nKetik jawaban Anda di sini!`,
-          timestamp: Date.now() + 500,
-          role: 'bot'
-        };
-      } else if (isStickerCommand) {
+        // Fix: Replace external generic GPT API with Nexa's own high-performance Gemini AI for premium business insights
+        const aiResponse = await getAISuggestion(query);
+        addBotMessage(aiResponse, { name: 'NEXA AI', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Nexa' });
+      } 
+      else if (lowerText === '.nyerah' && activeGame) {
+        addBotMessage(`🏳️ ANDA MENYERAH.\nJawaban yang benar adalah: ${activeGame.answer.toUpperCase()}`, { name: 'NEXA GAME' });
+        setActiveGame(null);
+      }
+      else if (lowerText === '.asahotak') {
+        const res = await fetch(`https://api.nexray.web.id/games/asahotak`);
+        const data = await res.json();
+        if (data.status) {
+          addBotMessage(`🧩 ASAH OTAK\n\nSoal: ${data.result.soal}\n\nKetik jawaban Anda langsung di chat!`, { name: 'NEXA GAME' });
+          setActiveGame({ type: 'asahotak', answer: data.result.jawaban });
+        }
+      } 
+      else if (lowerText === '.tebakgambar') {
+        const res = await fetch(`https://api.neoxr.eu/api/whatimg?apikey=${API_KEY_NEOXR}`);
+        const data = await res.json();
+        if (data.status) {
+          addBotMessage(`🖼️ TEBAK GAMBAR\nApa maksud dari gambar di atas?\n\nKetik jawaban Anda!`, { 
+            name: 'NEXA GAME', 
+            imageUrl: data.data.image 
+          });
+          setActiveGame({ 
+            type: 'tebakgambar', 
+            answer: data.data.jawaban,
+            description: data.data.deskripsi 
+          });
+        }
+      }
+      else if (lowerText.startsWith('.brat ')) {
+        const query = text.slice(6).trim();
+        addBotMessage(`GENERATED BRAT: "${query}"`, { imageUrl: `https://api.nexray.web.id/maker/brathd?text=${encodeURIComponent(query)}` });
+      }
+      else if (lowerText.startsWith('.iqc ')) {
+        const query = text.slice(5).trim();
+        addBotMessage(`GENERATED IQC: "${query}"`, { imageUrl: `https://api.nexray.web.id/maker/iqc?text=${encodeURIComponent(query)}` });
+      }
+      else if (lowerText === '.sticker') {
         const randomSticker = DEFAULT_STICKERS[Math.floor(Math.random() * DEFAULT_STICKERS.length)];
-        botMessage = {
-          id: 'bot-' + Math.random().toString(36).substr(2, 9),
-          userId: 'nexa-bot',
-          userName: 'NEXA BOT',
-          userAvatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Nexa',
-          text: "",
-          stickerUrl: randomSticker,
-          timestamp: Date.now() + 500,
-          role: 'bot'
-        };
+        addBotMessage("", { stickerUrl: randomSticker });
       }
 
-      // Save and broadcast
-      const db = getDB();
-      const updatedMessages = [...db.messages, newMessage];
-      if (botMessage) updatedMessages.push(botMessage);
-      
-      saveToDB({ messages: updatedMessages });
-      broadcastMessage(newMessage);
-      
-      if (botMessage) {
-        setTimeout(() => {
-          broadcastMessage(botMessage!);
-          setMessages(prev => [...prev.filter(m => m.id !== botMessage!.id), botMessage!]);
-        }, 500);
-      }
-      
-      setShowStickers(false);
-    } catch (err: any) {
+    } catch (err) {
       notify("KESALAHAN API BOT", "alert");
     } finally {
       setIsSending(false);
@@ -206,19 +207,12 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
     notify(newFavs.includes(url) ? "SIMPAN KE KOLEKSI" : "DIHAPUS DARI KOLEKSI", "success");
   };
 
-  const formatTime = (ts: number) => {
-    return new Date(ts).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-  };
-
   return (
     <div className="flex flex-col h-full bg-black relative overflow-hidden">
-      <div 
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 pt-4 pb-48 space-y-6 scroll-smooth"
-      >
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pt-4 pb-52 space-y-6 scroll-smooth">
         <div className="px-4 py-3 glass rounded-2xl mb-4 border-blue-500/20 text-center">
           <p className="text-[8px] font-black uppercase tracking-[0.3em] text-blue-400">
-            SECURE NODE ACTIVE • AUTO-RESET 07:00 AM
+            NEXA SECURE CHAT • AUTO-RESET 07:00 AM
           </p>
         </div>
 
@@ -244,7 +238,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
                     <span className={`text-[9px] font-black uppercase tracking-widest ${isBot ? 'text-blue-400' : 'text-gray-500'}`}>
                       {msg.userName}
                     </span>
-                    {isBot && <span className="bg-blue-600 text-white text-[6px] font-black px-1.5 rounded-sm">AI</span>}
+                    {isBot && <span className="bg-blue-600 text-white text-[6px] font-black px-1.5 rounded-sm">BOT</span>}
                   </div>
                 )}
                 
@@ -286,7 +280,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
                 )}
                 
                 <span className="text-[7px] text-gray-700 font-bold uppercase tracking-widest mt-1 px-1">
-                  {formatTime(msg.timestamp)}
+                  {new Date(msg.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
             </div>
@@ -309,16 +303,10 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
         <div className="fixed bottom-48 left-4 right-4 z-[60] max-w-lg mx-auto h-80 glass-dark rounded-[40px] border border-white/10 flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 duration-500 shadow-2xl">
           <div className="flex items-center justify-between p-5 border-b border-white/5 bg-white/5">
             <div className="flex gap-6">
-              <button 
-                onClick={() => setStickerTab('default')}
-                className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${stickerTab === 'default' ? 'text-white scale-105' : 'text-gray-600'}`}
-              >
+              <button onClick={() => setStickerTab('default')} className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${stickerTab === 'default' ? 'text-white scale-105' : 'text-gray-600'}`}>
                 <Zap size={14} className={stickerTab === 'default' ? 'text-blue-400' : ''} /> Nexa Pack
               </button>
-              <button 
-                onClick={() => setStickerTab('fav')}
-                className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${stickerTab === 'fav' ? 'text-white scale-105' : 'text-gray-600'}`}
-              >
+              <button onClick={() => setStickerTab('fav')} className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${stickerTab === 'fav' ? 'text-white scale-105' : 'text-gray-600'}`}>
                 <Heart size={14} className={favorites.length > 0 ? "text-red-500 fill-red-500" : ""} /> Saved ({favorites.length})
               </button>
             </div>
@@ -326,20 +314,11 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
               <X size={16} />
             </button>
           </div>
-          
           <div className="flex-1 overflow-y-auto p-5 grid grid-cols-4 gap-4 content-start bg-black/20">
             {(stickerTab === 'default' ? DEFAULT_STICKERS : favorites).map((url, i) => (
               <div key={url + i} className="relative group aspect-square flex items-center justify-center bg-white/5 rounded-2xl hover:bg-white/10 transition-colors">
-                <img 
-                  src={url} 
-                  onClick={() => handleSendSticker(url)}
-                  className="w-[85%] h-[85%] object-contain cursor-pointer hover:scale-115 transition-transform active:scale-90" 
-                  alt="sticker-item"
-                />
-                <button 
-                  onClick={(e) => handleToggleFav(e, url)}
-                  className={`absolute -top-1 -right-1 p-1.5 rounded-full glass border-white/20 opacity-0 group-hover:opacity-100 transition-all ${favorites.includes(url) ? 'bg-yellow-500 text-black border-transparent shadow-lg' : 'text-white'}`}
-                >
+                <img src={url} onClick={() => handleSendSticker(url)} className="w-[85%] h-[85%] object-contain cursor-pointer hover:scale-115 transition-transform active:scale-90" alt="sticker" />
+                <button onClick={(e) => handleToggleFav(e, url)} className={`absolute -top-1 -right-1 p-1.5 rounded-full glass border-white/20 opacity-0 group-hover:opacity-100 transition-all ${favorites.includes(url) ? 'bg-yellow-500 text-black border-transparent shadow-lg' : 'text-white'}`}>
                   <Star size={10} className={favorites.includes(url) ? "fill-current" : ""} />
                 </button>
               </div>
@@ -348,57 +327,45 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
         </div>
       )}
 
+      {/* GAME STATUS BAR */}
+      {activeGame && (
+        <div className="fixed bottom-48 left-1/2 -translate-x-1/2 z-30 px-6 py-2 glass-dark border border-blue-500/30 rounded-full flex items-center gap-3 animate-in slide-in-from-bottom-2 shadow-2xl">
+          <Brain size={14} className="text-blue-400 animate-pulse" />
+          <span className="text-[9px] font-black uppercase tracking-widest text-white">SESI {activeGame.type.toUpperCase()} AKTIF</span>
+          <button onClick={() => handleSendMessage(undefined, { text: '.nyerah' })} className="flex items-center gap-1.5 pl-3 border-l border-white/10 hover:text-red-400 transition-colors">
+            <Flag size={10} />
+            <span className="text-[8px] font-black uppercase tracking-widest">NYERAH</span>
+          </button>
+        </div>
+      )}
+
       {/* COMMAND SHORTCUTS */}
-      {!showStickers && !isBanned && inputText.length === 0 && (
+      {!showStickers && !isBanned && !activeGame && inputText.length === 0 && (
         <div className="fixed bottom-48 left-0 right-0 flex justify-center gap-2 px-4 z-30 overflow-x-auto no-scrollbar pb-2">
           <CommandTag icon={<Cpu size={12}/>} label=".ai" onClick={() => setInputText('.ai ')} />
-          <CommandTag icon={<Zap size={12}/>} label=".brat" onClick={() => setInputText('.brat ')} />
-          <CommandTag icon={<Star size={12}/>} label=".iqc" onClick={() => setInputText('.iqc ')} />
           <CommandTag icon={<Brain size={12}/>} label=".asahotak" onClick={() => handleSendMessage(undefined, { text: '.asahotak' })} />
+          <CommandTag icon={<ImageIcon size={12}/>} label=".tebakgambar" onClick={() => handleSendMessage(undefined, { text: '.tebakgambar' })} />
+          <CommandTag icon={<Zap size={12}/>} label=".brat" onClick={() => setInputText('.brat ')} />
         </div>
       )}
 
       {/* INPUT BAR */}
       <div className="fixed bottom-28 left-0 right-0 px-4 z-40 max-w-lg mx-auto w-full">
-        {isBanned && (
-          <div className="mb-3 glass-dark border border-red-900/50 rounded-3xl p-4 flex items-center gap-3 animate-in slide-in-from-bottom-4 shadow-xl">
-            <AlertTriangle size={18} className="text-red-500" />
-            <p className="text-[9px] font-black text-red-500 uppercase tracking-widest flex-1">
-              LOCKOUT SYSTEM: {Math.floor(banTimeRemaining / 60)}m {banTimeRemaining % 60}s
-            </p>
-          </div>
-        )}
-        
-        <form 
-          onSubmit={handleSendMessage}
-          className="glass-dark rounded-full h-16 flex items-center px-2 border border-white/10 shadow-2xl relative"
-        >
-          <button 
-            type="button"
-            onClick={() => setShowStickers(!showStickers)}
-            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${showStickers ? 'bg-white text-black scale-90' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
-          >
+        <form onSubmit={handleSendMessage} className="glass-dark rounded-full h-16 flex items-center px-2 border border-white/10 shadow-2xl relative">
+          <button type="button" onClick={() => setShowStickers(!showStickers)} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${showStickers ? 'bg-white text-black scale-90' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}>
             <Smile size={22} />
           </button>
-
           <div className="flex-1 flex items-center px-3">
             <input 
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               disabled={isBanned || isSending}
-              placeholder={isBanned ? "SISTEM TERKUNCI" : "Ketik .ai / .brat / .iqc ..."}
+              placeholder={isBanned ? "SISTEM TERKUNCI" : activeGame ? "Ketik jawaban Anda..." : "Ketik .ai / .asahotak / .tebakgambar"}
               className="w-full bg-transparent border-none outline-none text-white text-[13px] font-medium placeholder:text-gray-700"
             />
           </div>
-          
-          <button 
-            type="submit"
-            disabled={isBanned || !inputText.trim() || isSending}
-            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-              inputText.trim() && !isBanned && !isSending ? 'bg-white text-black shadow-lg shadow-white/20' : 'text-gray-800 bg-white/5'
-            }`}
-          >
+          <button type="submit" disabled={isBanned || !inputText.trim() || isSending} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${inputText.trim() && !isBanned && !isSending ? 'bg-white text-black shadow-lg shadow-white/20' : 'text-gray-800 bg-white/5'}`}>
             <Send size={20} />
           </button>
         </form>
@@ -408,10 +375,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, messages, setMessages, notify
 };
 
 const CommandTag: React.FC<{ icon: React.ReactNode, label: string, onClick: () => void }> = ({ icon, label, onClick }) => (
-  <button 
-    onClick={onClick}
-    className="flex items-center gap-2 px-4 py-2 glass rounded-full border-white/10 hover:bg-white/10 transition-all active:scale-95 shrink-0"
-  >
+  <button onClick={onClick} className="flex items-center gap-2 px-4 py-2 glass rounded-full border-white/10 hover:bg-white/10 transition-all active:scale-95 shrink-0">
     {icon}
     <span className="text-[10px] font-black uppercase tracking-widest text-white/80">{label}</span>
   </button>
