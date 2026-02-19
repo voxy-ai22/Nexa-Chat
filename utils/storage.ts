@@ -8,7 +8,7 @@ interface Database {
   messages: Message[];
   tickets: Ticket[];
   suggestions: Suggestion[];
-  favoriteStickers: string[]; // Daftar URL stiker favorit
+  favoriteStickers: string[];
   lastReset: string; 
 }
 
@@ -35,13 +35,19 @@ export const getDB = (): Database => {
   const db = getInitialDB();
   const now = new Date();
   
+  // LOGIKA RESET 07:00 PAGI
   const lastResetDate = new Date(db.lastReset);
-  const resetPoint = new Date();
-  resetPoint.setHours(7, 0, 0, 0);
+  
+  // Tentukan waktu reset hari ini (07:00 AM)
+  const todayResetPoint = new Date();
+  todayResetPoint.setHours(7, 0, 0, 0);
 
-  if (now >= resetPoint && (lastResetDate < resetPoint)) {
+  // Jika SEKARANG sudah lewat jam 7 pagi
+  // DAN terakhir reset adalah SEBELUM jam 7 pagi hari ini
+  if (now >= todayResetPoint && lastResetDate < todayResetPoint) {
+    console.log("NEXA_SYSTEM: PROTOKOL PEMBERSIHAN 07:00 DIAKTIFKAN.");
     db.messages = [];
-    db.lastReset = new Date().toISOString();
+    db.lastReset = now.toISOString();
     saveToDB(db);
   }
   

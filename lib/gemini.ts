@@ -1,28 +1,27 @@
 import { GoogleGenAI } from "@google/genai";
 
-// Use the elite model for business consulting tasks as per guidelines
+/**
+ * NEXA AI CORE - POWERED BY GEMINI 3 PRO
+ */
 export const getAISuggestion = async (prompt: string) => {
   try {
-    // Initializing with apiKey as a named parameter
+    // Always use the named parameter and process.env.API_KEY as per guidelines.
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // Using ai.models.generateContent directly with model name and contents
+    // Using gemini-3-pro-preview for complex reasoning and assistant tasks.
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: prompt,
-      config: {
-        systemInstruction: "Anda adalah NEXA AI, konsultan bisnis elit. Berikan saran yang sangat singkat, tajam, dan profesional dalam bahasa Indonesia. Gaya komunikasi Anda adalah monokrom: lugas dan tidak bertele-tele.",
-        temperature: 0.7,
-      },
     });
 
-    // Accessing .text property directly (not a method) as per @google/genai guidelines
+    // Access the .text property directly (not a method) as instructed.
     const textOutput = response.text;
-    if (!textOutput) throw new Error("Output AI kosong.");
+    
+    if (!textOutput) throw new Error("Respons AI tidak valid.");
     
     return textOutput;
   } catch (error) {
     console.error("NEXA_AI_CORE_FAILURE:", error);
-    return "GAGAL MENGHUBUNGKAN KE NEXA AI. SILAKAN COBA LAGI.";
+    return "GAGAL MENGHUBUNGKAN KE NEXA AI HUB. PASTIKAN TOKEN AKTIF.";
   }
 };
